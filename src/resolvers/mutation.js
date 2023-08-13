@@ -1,7 +1,8 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const {
-  AuthenticationError,
+  AuthenticationError
   // ForbiddenError
 } = require('apollo-server-express');
 require('dotenv').config();
@@ -9,21 +10,53 @@ require('dotenv').config();
 const gravatar = require('../util/gravatar');
 
 module.exports = {
-  newNote: async (_parent, args, { models }) => {
+  newNote: async (_parent, args, { models, user }) => {
+    // if there is no user on the context, throw an authentication error
+    if (!user) {
+      throw new AuthenticationError('You must be signed in to create a note');
+    }
+
     return await models.Note.create({
       content: args.content,
-      author: 'George'
+      // reference the author's mongo id
+      author: new mongoose.Types.ObjectId(user.id)
     });
   },
-  deleteNote: async (_parent, { id }, { models }) => {
+  deleteNote: async (_parent, { id }, { models, user }) => {
+    // if not a user, throw an Authentication Error
+    if (!user) {
+      throw new AuthenticationError('You must be signed in to delete a note');
+    }
+
+    // find the note
+    const note = await models.Note.findOne({ _id: id });
+    // if the note owner and current user don't match, throw a forbidden error
+    if (note && String(note.author) !== user.id) {
+      throw new ForbiddenError("You don't have permissions to delete the note");
+    }
+
     try {
+      // if everything checks out, remove the note
       await models.Note.findOneAndRemove({ _id: id });
       return true;
     } catch (err) {
+      // if there's an error along the way, return false
       return false;
     }
   },
-  updateNote: async (_parent, { content, id }, { models }) => {
+  updateNote: async (_parent, { content, id }, { models, user }) => {
+    // if not a user, throw an Authentication Error
+    if (!user) {
+      throw new AuthenticationError('You must be signed in to update a note');
+    }
+
+    // find the note
+    const note = await models.Note.findOne({ _id: id });
+    // if the note owner and current user don't match, throw a forbidden error
+    if (note && String(note.author) !== user.id) {
+      throw new ForbiddenError("You don't have permissions to update the note");
+    }
+
     return await models.Note.findOneAndUpdate(
       {
         _id: id
